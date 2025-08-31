@@ -136,3 +136,18 @@ async def smart_bypass(
 
         # Last resort: return whatever final URL we reached
         return final_url
+import re
+
+def normalize_url(url: str) -> str:
+    """Clean the URL (remove tracking or extra stuff)."""
+    return url.strip().split("?")[0]
+
+async def smart_bypass(url: str, prefer_domains=None, timeout: int = 25) -> str:
+    """
+    Fake bypass function – just returns the input for now.
+    Later you can add real bypass logic here.
+    """
+    # Example: if it's a gtlinks link, just return a fake Telegram link
+    if "gtlinks.me" in url:
+        return "https://t.me/fake_bypass_result"
+    return url
