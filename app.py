@@ -13,9 +13,9 @@ from bypass.engine import smart_bypass, normalize_url
 
 load_dotenv()
 
-API_ID = int(os.getenv("API_ID", "0"))
-API_HASH = os.getenv("API_HASH", "")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+API_ID = int(os.getenv("API_ID", "24196359"))
+API_HASH = os.getenv("API_HASH", "20a1b32381ed174799e8af8def3e176b")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8225310670:AAFLJ4DvtQ9ENOS8Z1Fqy2u24ZbRGdp8bbQ")
 # Optional keepalive HTTP server (for platforms that require an open port)
 KEEPALIVE = os.getenv("KEEPALIVE", "false").lower() == "true"
 PORT = int(os.getenv("PORT", "8080"))
