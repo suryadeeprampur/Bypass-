@@ -104,8 +104,7 @@ async def bypass_handler(_: Client, m: Message):
             seen.add(nu)
             normed.append(nu)
 
-    await m.reply_chat_action("typing")
-    results: List[Tuple[str, str]] = []
+    await m.reply_chat_action(ChatAction.TYPING)= []
 
     # Process in parallel but gentle on flood/waf
     sem = asyncio.Semaphore(5)
