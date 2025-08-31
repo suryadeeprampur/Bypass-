@@ -151,3 +151,18 @@ async def smart_bypass(url: str, prefer_domains=None, timeout: int = 25) -> str:
     if "gtlinks.me" in url:
         return "https://t.me/fake_bypass_result"
     return url
+
+
+
+import requests
+from bs4 import BeautifulSoup
+from re import search
+
+url = "https://getlinks.in/demo"
+
+def getlinks(url):
+    session = requests.Session()
+    res = session.get(url, headers={'Referer': BeautifulSoup(session.get(url).text, "html.parser").find("meta", {"http-equiv": "refresh"}).get('content').split('url=')[1]})
+    return search(r'href = "(.*)"', res.text).group(1)
+
+print(getlinks(url))
