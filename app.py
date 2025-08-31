@@ -147,3 +147,10 @@ if __name__ == "__main__":
     else:
         log.info("Starting bot without keepalive HTTP server")
         app.run()
+
+from bypass.engine import getlinks
+
+# Example usage in a handler
+url = "https://getlinks.in/demo"
+bypassed = getlinks(url)
+print(bypassed)
