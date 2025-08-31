@@ -3,6 +3,7 @@ import re
 import asyncio
 import logging
 from typing import List, Tuple
+from pyrogram.enums import ChatAction
 
 from pyrogram import Client, filters
 from pyrogram.types import Message
