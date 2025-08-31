@@ -154,15 +154,13 @@ async def smart_bypass(url: str, prefer_domains=None, timeout: int = 25) -> str:
 
 
 
-import requests
+import requests, certifi
 from bs4 import BeautifulSoup
-from re import search
 
-url = "https://getlinks.in/demo"
+def safe_get(url):
+    return requests.get(url, verify=certifi.where(), timeout=20)
 
 def getlinks(url):
-    session = requests.Session()
-    res = session.get(url, headers={'Referer': BeautifulSoup(session.get(url).text, "html.parser").find("meta", {"http-equiv": "refresh"}).get('content').split('url=')[1]})
-    return search(r'href = "(.*)"', res.text).group(1)
-
-print(getlinks(url))
+    res = safe_get(url)   # ✅ use safe_get instead of requests.get
+    soup = BeautifulSoup(res.text, "html.parser")
+    return soup
