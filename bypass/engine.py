@@ -3,7 +3,8 @@ import re
 import html
 from typing import Iterable, Optional, Sequence
 from urllib.parse import urlparse, urljoin
-
+import cloudscraper
+session = cloudscraper.create_scraper()
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
 UA = (
