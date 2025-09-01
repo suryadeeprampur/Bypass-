@@ -4,12 +4,11 @@ import asyncio
 import logging
 from typing import List, Tuple
 from pyrogram.enums import ChatAction
-
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from dotenv import load_dotenv
 
-# Local
+# Local engine
 from bypass.engine import smart_bypass, normalize_url
 
 load_dotenv()
@@ -17,7 +16,6 @@ load_dotenv()
 API_ID = int(os.getenv("API_ID", "24196359"))
 API_HASH = os.getenv("API_HASH", "20a1b32381ed174799e8af8def3e176b")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8225310670:AAFLJ4DvtQ9ENOS8Z1Fqy2u24ZbRGdp8bbQ")
-# Optional keepalive HTTP server (for platforms that require an open port)
 KEEPALIVE = os.getenv("KEEPALIVE", "false").lower() == "true"
 PORT = int(os.getenv("PORT", "8080"))
 
@@ -30,8 +28,7 @@ log = logging.getLogger("bypass-bot")
 
 if not (API_ID and API_HASH and BOT_TOKEN):
     raise SystemExit(
-        "Missing API_ID/API_HASH/BOT_TOKEN. "
-        "Create .env from .env.example and fill credentials."
+        "Missing API_ID/API_HASH/BOT_TOKEN. Fill them in your .env file."
     )
 
 app = Client(
@@ -43,10 +40,7 @@ app = Client(
     in_memory=True
 )
 
-URL_RE = re.compile(
-    r"(https?://[^\s<>\"'\)]+)",
-    re.IGNORECASE
-)
+URL_RE = re.compile(r"(https?://[^\s<>\"'\)]+)", re.IGNORECASE)
 
 TARGET_PREFERRED = (
     "t.me", "telegram.me", "telegram.dog",
@@ -76,6 +70,8 @@ def pretty_pairs(pairs: List[Tuple[str, str]]) -> str:
         lines.append(f"✅ **Bypassed**: {dst}\n")
     return "\n".join(lines) if lines else "No URLs detected."
 
+# --- Bot Handlers ---
+
 @app.on_message(filters.command("start"))
 async def start_handler(_: Client, m: Message):
     await m.reply_text("👋 **Hi!** Send me a short link and I’ll bypass it.\n\n" + HELP_TEXT, disable_web_page_preview=True)
@@ -95,7 +91,7 @@ async def bypass_handler(_: Client, m: Message):
     if not urls:
         return await m.reply_text("⚠️ Please send a valid URL (starts with http:// or https://).")
 
-    # Normalize + dedupe while preserving order
+    # Normalize + dedupe
     seen = set()
     normed = []
     for u in urls:
@@ -106,7 +102,10 @@ async def bypass_handler(_: Client, m: Message):
 
     await m.reply_chat_action(ChatAction.TYPING)
 
-    # Process in parallel but gentle on flood/waf
+    # Initialize results
+    results = []
+
+    # Semaphore to avoid flooding
     sem = asyncio.Semaphore(5)
     async def task(u: str):
         async with sem:
@@ -119,13 +118,13 @@ async def bypass_handler(_: Client, m: Message):
 
     await asyncio.gather(*(task(u) for u in normed))
 
-    # Keep original order in output
+    # Preserve original order
     ordered = [(u, next(dst for src, dst in results if src == u)) for u in normed]
     reply = pretty_pairs(ordered)
 
     await m.reply_text(reply, disable_web_page_preview=False)
 
-# Optional keepalive HTTP server (for platforms that require a port)
+# --- Optional keepalive server ---
 async def _run_keepalive():
     from aiohttp import web
     async def ping(_):
@@ -136,8 +135,9 @@ async def _run_keepalive():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
-    log.info("Keepalive server on :%d", PORT)
+    log.info("Keepalive server running on port %d", PORT)
 
+# --- Main ---
 if __name__ == "__main__":
     if KEEPALIVE:
         loop = asyncio.get_event_loop()
@@ -147,10 +147,3 @@ if __name__ == "__main__":
     else:
         log.info("Starting bot without keepalive HTTP server")
         app.run()
-
-from bypass.engine import getlinks
-
-# Example usage in a handler
-url = "https://getlinks.in/demo"
-bypassed = getlinks(url)
-print(bypassed)
