@@ -177,6 +177,6 @@ async def smart_bypass(url: str, prefer_domains=DEFAULT_PREFERRED, timeout: int 
 # --- Testing ---
 
 if __name__ == "__main__":
-    test_url = input("Enter short URL: ").strip()
+    test_url = input("https://gplinks.co/P3rGI").strip()
     final_link = asyncio.run(smart_bypass(test_url))
     print("Bypassed URL:", final_link)
