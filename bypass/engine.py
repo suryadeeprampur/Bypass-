@@ -154,19 +154,6 @@ async def smart_bypass(url: str, prefer_domains=None, timeout: int = 25) -> str:
         return "https://t.me/fake_bypass_result"
     return url
 
-
-
-import requests, certifi
-from bs4 import BeautifulSoup
-
-def safe_get(url):
-    return requests.get(url, verify=certifi.where(), timeout=20)
-
-def getlinks(url):
-    res = safe_get(url)   # ✅ use safe_get instead of requests.get
-    soup = BeautifulSoup(res.text, "html.parser")
-    return soup
-
 import requests, ssl
 from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
