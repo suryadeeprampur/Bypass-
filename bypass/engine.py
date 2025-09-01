@@ -1,63 +1,60 @@
 import asyncio
 import html
 import re
-from typing import Iterable, Optional, Sequence
+from typing import Optional, Sequence, Iterable
 from urllib.parse import urlparse, urljoin
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
 import cloudscraper
 from bs4 import BeautifulSoup
 import functools
 
-# User-Agent
-UA = (
+# ---------------- Config ---------------- #
+USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0 Safari/537.36"
 )
 
-# Shortener hints
-SHORTENER_HINTS = {
+SHORTENERS = {
     "bit.ly", "t.co", "tinyurl.com", "goo.gl", "tiny.one",
     "cutt.ly", "rebrand.ly", "ouo.io", "shorte.st", "adf.ly",
     "linkvertise.com", "lnk.to", "gtlinks.me", "droplink.co",
     "tnlink.in", "tnshort.net", "rocklinks.net", "ez4short.com",
-    "ouo.press", "boost.ink",
+    "ouo.press", "boost.ink", "gplinks.in"
 }
 
-# Preferred targets
-DEFAULT_PREFERRED = ("t.me", "telegram.me", "telegram.dog")
+PREFERRED_DOMAINS = ("t.me", "telegram.me", "telegram.dog")
 
-# Public APIs for fallback
 PUBLIC_APIS = [
     "https://api.bypass.vip/?url=",
     "https://bypass.bot.nu/bypass?url=",
     "https://linkvertisebypass.org/api/?url="
 ]
 
-# Regex patterns
 META_REFRESH_RE = re.compile(
     r'<meta\s+http-equiv=["\']refresh["\'][^>]*?url=([^"\'>\s]+)', re.IGNORECASE
 )
 JS_REDIRECT_RE = re.compile(
-    r'(?:window\.location(?:\.href)?|location\.href)\s*=\s*["\']([^"\']+)["\']', re.IGNORECASE
+    r'(?:window\.location(?:\.href)?|location\.href)\s*=\s*["\']([^"\']+)["\']',
+    re.IGNORECASE
 )
 HREF_RE = re.compile(r'href=["\']([^"\']+)["\']', re.IGNORECASE)
 
-# --- Utilities ---
 
+# ---------------- Utilities ---------------- #
 def normalize_url(url: str) -> str:
-    """Ensure URL starts with http/https and remove trailing spaces."""
     url = url.strip()
     if not url.lower().startswith(("http://", "https://")):
         url = "http://" + url
     return url
 
-def _is_shortener(netloc: str) -> bool:
-    host = netloc.lower()
-    return any(host == d or host.endswith("." + d) for d in SHORTENER_HINTS)
 
-def _preferred_first(candidates: Iterable[str], prefer: Sequence[str]) -> Optional[str]:
-    """Return the preferred URL from a list."""
+def is_shortener(host: str) -> bool:
+    return any(host == d or host.endswith("." + d) for d in SHORTENERS)
+
+
+def preferred_link(candidates: Iterable[str], prefer: Sequence[str]) -> Optional[str]:
+    """Return the best URL based on preferred domains."""
     def score(u: str) -> int:
         host = urlparse(u).netloc.lower()
         for i, dom in enumerate(prefer, start=1):
@@ -66,93 +63,88 @@ def _preferred_first(candidates: Iterable[str], prefer: Sequence[str]) -> Option
         return 0
 
     best = None
-    best_s = -1
+    best_score = -1
     for u in candidates:
         s = score(u)
-        if s > best_s:
-            best_s = s
+        if s > best_score:
+            best_score = s
             best = u
     return best or next(iter(candidates), None)
 
-async def _fetch(session: ClientSession, url: str):
-    """GET URL and return final URL and HTML text if content-type is HTML."""
-    resp = await session.get(url, allow_redirects=True)
-    text = ""
-    ctype = resp.headers.get("content-type", "")
-    if "text/html" in ctype.lower():
-        text = await resp.text(errors="ignore")
-    return str(resp.url), text
 
-def _extract_from_html(html_text: str, base_url: str, prefer_domains: Sequence[str]) -> Optional[str]:
-    """Extract redirect URL from meta refresh, JS, or anchors."""
-    # Meta refresh
+async def fetch(session: ClientSession, url: str):
+    """Fetch URL and return (final_url, html_text if any)."""
+    resp = await session.get(url, allow_redirects=True)
+    html_text = ""
+    if "text/html" in resp.headers.get("content-type", "").lower():
+        html_text = await resp.text(errors="ignore")
+    return str(resp.url), html_text
+
+
+def extract_redirect(html_text: str, base_url: str, prefer: Sequence[str]) -> Optional[str]:
+    """Extract redirect from meta, JS, or anchor tags."""
     m = META_REFRESH_RE.search(html_text)
     if m:
         return urljoin(base_url, html.unescape(m.group(1)))
 
-    # JS redirect
-    js = JS_REDIRECT_RE.findall(html_text)
-    if js:
-        hrefs = [urljoin(base_url, html.unescape(u)) for u in js]
-        chosen = _preferred_first(hrefs, prefer_domains)
-        if chosen:
-            return chosen
+    js_links = JS_REDIRECT_RE.findall(html_text)
+    if js_links:
+        hrefs = [urljoin(base_url, html.unescape(u)) for u in js_links]
+        return preferred_link(hrefs, prefer)
 
-    # Anchors
     hrefs = [urljoin(base_url, html.unescape(h)) for h in HREF_RE.findall(html_text)]
-    if not hrefs:
-        return None
-    return _preferred_first(hrefs, prefer_domains)
+    if hrefs:
+        return preferred_link(hrefs, prefer)
+    return None
 
-# --- Shortener-specific bypasses ---
 
+# ---------------- Cloudflare Handling ---------------- #
+def cloudscraper_bypass(url: str) -> tuple[str, str]:
+    """Bypass Cloudflare challenge using cloudscraper."""
+    scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
+    response = scraper.get(url)
+    return response.url, response.text
+
+
+def needs_cloudflare_bypass(html_text: str) -> bool:
+    return "cf-challenge" in html_text or "Checking your browser" in html_text
+
+
+# ---------------- Special Bypasses ---------------- #
 async def gplinks_bypass(url: str) -> str:
-    """Async bypass for gplinks.in with headers and countdown."""
-    client = cloudscraper.create_scraper(
-        browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
-    )
+    """Handle gplinks.in shortener."""
+    scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
     loop = asyncio.get_running_loop()
 
-    headers = {
-        "User-Agent": UA,
-        "Referer": url
-    }
+    headers = {"User-Agent": USER_AGENT, "Referer": url}
 
-    # Step 1: GET initial page
-    res = await loop.run_in_executor(
-        None,
-        functools.partial(client.get, url, headers=headers, timeout=15)
-    )
+    res = await loop.run_in_executor(None, functools.partial(scraper.get, url, headers=headers, timeout=15))
 
-    # Already resolved
     if "gplinks.in" not in res.url:
         return res.url
 
-    # Step 2: Parse form
     soup = BeautifulSoup(res.text, "html.parser")
     form = soup.find("form")
     if not form:
-        return "Bypass failed: form not found."
+        return res.url
 
     action_url = form.get("action")
-    inputs = form.find_all("input")
-    data = {inp.get("name"): inp.get("value", "") for inp in inputs if inp.get("name")}
+    data = {inp.get("name"): inp.get("value", "") for inp in form.find_all("input") if inp.get("name")}
 
-    # Step 3: Wait countdown
-    await asyncio.sleep(7)
+    await asyncio.sleep(7)  # Wait for countdown
 
-    # Step 4: POST form
     res2 = await loop.run_in_executor(
         None,
-        functools.partial(client.post, action_url, data=data, headers=headers, timeout=15, allow_redirects=False)
+        functools.partial(scraper.post, action_url, data=data, headers=headers, timeout=15, allow_redirects=False)
     )
 
-    # Step 5: Return final link
-    if "Location" in res2.headers:
-        return res2.headers["Location"]
-    return "Bypass failed: no redirect found."
+    return res2.headers.get("Location", res.url)
 
-# --- Public API fallback ---
+
+async def ouo_io_bypass(url: str) -> str:
+    """Handle ouo.io shortener using cloudscraper."""
+    return cloudscraper_bypass(url)[0]
+
 
 async def try_public_apis(url: str) -> Optional[str]:
     for base in PUBLIC_APIS:
@@ -167,66 +159,77 @@ async def try_public_apis(url: str) -> Optional[str]:
             continue
     return None
 
-# --- Main smart bypass ---
 
-async def smart_bypass(url: str, prefer_domains=DEFAULT_PREFERRED, timeout: int = 25, use_api: bool = True) -> str:
+# ---------------- Main Logic ---------------- #
+async def smart_bypass(url: str, prefer=PREFERRED_DOMAINS, timeout: int = 25, use_api=True) -> str:
     norm = normalize_url(url)
     parsed = urlparse(norm)
 
-    # Handle known shorteners
-    if "gplinks.in" in parsed.netloc:
+    # Special handlers
+    host = parsed.netloc.lower()
+    if "gplinks.in" in host:
         return await gplinks_bypass(norm)
+    elif "ouo.io" in host or "ouo.press" in host:
+        return await ouo_io_bypass(norm)
+    # Add more shorteners here if needed
 
-    # Local bypass logic
+    # Try aiohttp first
     connector = TCPConnector(ssl=False, limit=20)
-    t = ClientTimeout(total=timeout)
-    async with ClientSession(timeout=t, connector=connector, headers={"User-Agent": UA}) as session:
-        final_url, html_text = await _fetch(session, norm)
+    async with ClientSession(timeout=ClientTimeout(total=timeout), connector=connector, headers={"User-Agent": USER_AGENT}) as session:
+        final_url, html_text = await fetch(session, norm)
 
-        if not _is_shortener(urlparse(final_url).netloc):
+        # Cloudflare bypass
+        if needs_cloudflare_bypass(html_text):
+            final_url, html_text = cloudscraper_bypass(norm)
+
+        if not is_shortener(urlparse(final_url).netloc):
             return final_url
 
         if html_text:
-            extracted = _extract_from_html(html_text, final_url, prefer_domains)
+            extracted = extract_redirect(html_text, final_url, prefer)
             if extracted:
                 return extracted
 
-        final_url_2, html_text_2 = await _fetch(session, final_url)
-        if not _is_shortener(urlparse(final_url_2).netloc):
+        # Second fetch attempt
+        final_url_2, html_text_2 = await fetch(session, final_url)
+        if needs_cloudflare_bypass(html_text_2):
+            final_url_2, html_text_2 = cloudscraper_bypass(final_url)
+
+        if not is_shortener(urlparse(final_url_2).netloc):
             return final_url_2
         if html_text_2:
-            extracted2 = _extract_from_html(html_text_2, final_url_2, prefer_domains)
+            extracted2 = extract_redirect(html_text_2, final_url_2, prefer)
             if extracted2:
                 return extracted2
 
     # API fallback
     if use_api:
-        result = await try_public_apis(norm)
-        if result:
-            return result
+        api_result = await try_public_apis(norm)
+        if api_result:
+            return api_result
 
     return final_url
 
-# --- Example usage ---
+
+# ---------------- Sync Helper ---------------- #
+def bypass(url: str) -> str:
+    """Run bypass synchronously."""
+    return asyncio.run(smart_bypass(url))
+
+
+# ---------------- Example Run ---------------- #
 if __name__ == "__main__":
-    test_urls = [
-        "https://gplinks.co/P3rGI",  # GPLinks
-        "https://bit.ly/3xyz123"     # Bitly example
+    test_links = [
+        "https://gplinks.co/P3rGI",
+        "https://ouo.io/abc123",
+        "https://bit.ly/3xyz123",
+        "https://droplink.co/example"
     ]
 
     async def main():
-        for url in test_urls:
-            print(f"Original: {url}")
-            final = await smart_bypass(url)
-            print(f"Bypassed: {final}\n")
+        for link in test_links:
+            print(f"Original: {link}")
+            result = await smart_bypass(link)
+            print(f"Bypassed: {result}\n")
 
     asyncio.run(main())
-
-
-scraper = cloudscraper.create_scraper()
-print(result)
-
-def smart_bypass(short_link):
-    scraper = cloudscraper.create_scraper()
-    result = scraper.get(short_link).url
-    return result
