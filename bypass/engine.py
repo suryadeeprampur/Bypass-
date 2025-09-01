@@ -101,16 +101,30 @@ def _extract_from_html(html_text: str, base_url: str, prefer_domains: Sequence[s
 # --- Shortener bypasses ---
 
 async def gplinks_bypass(url: str) -> str:
-    """Async bypass for gplinks.in"""
-    client = cloudscraper.create_scraper()
+    """Async bypass for gplinks.in with headers and countdown."""
+    client = cloudscraper.create_scraper(
+        browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
+    )
     loop = asyncio.get_running_loop()
 
-    # GET initial page
-    res = await loop.run_in_executor(None, functools.partial(client.get, url, timeout=15))
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/124.0 Safari/537.36",
+        "Referer": url
+    }
 
+    # Step 1: GET initial page
+    res = await loop.run_in_executor(
+        None,
+        functools.partial(client.get, url, headers=headers, timeout=15)
+    )
+
+    # Already resolved
     if "gplinks.in" not in res.url:
         return res.url
 
+    # Step 2: Parse form
     soup = BeautifulSoup(res.text, "html.parser")
     form = soup.find("form")
     if not form:
@@ -120,13 +134,16 @@ async def gplinks_bypass(url: str) -> str:
     inputs = form.find_all("input")
     data = {inp.get("name"): inp.get("value", "") for inp in inputs if inp.get("name")}
 
-    await asyncio.sleep(5)  # countdown
+    # Step 3: Wait countdown (most GPLinks need ~5–7s)
+    await asyncio.sleep(7)
 
-    headers = {"Referer": url}
+    # Step 4: POST form
     res2 = await loop.run_in_executor(
-        None, functools.partial(client.post, action_url, data=data, headers=headers, timeout=15, allow_redirects=False)
+        None,
+        functools.partial(client.post, action_url, data=data, headers=headers, timeout=15, allow_redirects=False)
     )
 
+    # Step 5: Return final link
     if "Location" in res2.headers:
         return res2.headers["Location"]
     return "Bypass failed: no redirect found."
@@ -174,9 +191,9 @@ async def smart_bypass(url: str, prefer_domains=DEFAULT_PREFERRED, timeout: int 
         # Last resort
         return final_url
 
-# --- Testing ---
-
+# --- Example usage ---
 if __name__ == "__main__":
-    test_url = input("https://gplinks.co/P3rGI").strip()
-    final_link = asyncio.run(smart_bypass(test_url))
+    import asyncio
+    test_url = "https://gplinks.co/P3rGI"
+    final_link = asyncio.run(gplinks_bypass(test_url))
     print("Bypassed URL:", final_link)
