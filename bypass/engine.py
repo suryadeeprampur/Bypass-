@@ -6,6 +6,8 @@ from urllib.parse import urlparse, urljoin
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
 import cloudscraper
 from bs4 import BeautifulSoup
+import functools
+
 
 # User-Agent
 UA = (
@@ -101,7 +103,10 @@ def _extract_from_html(html_text: str, base_url: str, prefer_domains: Sequence[s
 async def gplinks_bypass(url: str) -> str:
     """Async bypass for gplinks.in"""
     client = cloudscraper.create_scraper()
-    res = client.get(url, timeout=15)
+    loop = asyncio.get_running_loop()
+
+    # GET initial page
+    res = await loop.run_in_executor(None, functools.partial(client.get, url, timeout=15))
 
     if "gplinks.in" not in res.url:
         return res.url
@@ -115,10 +120,13 @@ async def gplinks_bypass(url: str) -> str:
     inputs = form.find_all("input")
     data = {inp.get("name"): inp.get("value", "") for inp in inputs if inp.get("name")}
 
-    await asyncio.sleep(10)  # wait countdown
+    await asyncio.sleep(5)  # countdown
 
     headers = {"Referer": url}
-    res2 = client.post(action_url, data=data, headers=headers, timeout=15, allow_redirects=False)
+    res2 = await loop.run_in_executor(
+        None, functools.partial(client.post, action_url, data=data, headers=headers, timeout=15, allow_redirects=False)
+    )
+
     if "Location" in res2.headers:
         return res2.headers["Location"]
     return "Bypass failed: no redirect found."
