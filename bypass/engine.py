@@ -221,3 +221,8 @@ if __name__ == "__main__":
             print(f"Bypassed: {final}\n")
 
     asyncio.run(main())
+
+
+scraper = cloudscraper.create_scraper()
+result = scraper.get(short_link).url
+print(result)
