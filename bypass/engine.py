@@ -3,9 +3,10 @@ import re
 import html
 from typing import Iterable, Optional, Sequence
 from urllib.parse import urlparse, urljoin
-import cloudscraper
-session = cloudscraper.create_scraper()
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
+import time
+import cloudscraper
+from bs4 import BeautifulSoup
 
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -192,3 +193,60 @@ def getlinks(url):
     res = safe_get(url)   # use safe_get here
     # parse response normally...
     return res.text
+
+
+
+def gplinks_bypass(url: str) -> str:
+    """
+    Bypass gplinks.in shortener and return the final destination link.
+    """
+    client = cloudscraper.create_scraper()  # handles Cloudflare
+    res = client.get(url, timeout=15)
+
+    if "gplinks.in" not in res.url:
+        # Already redirected
+        return res.url
+
+    soup = BeautifulSoup(res.text, "html.parser")
+    try:
+        form = soup.find("form")
+        if not form:
+            return "Bypass failed: form not found."
+
+        action_url = form.get("action")
+        inputs = form.find_all("input")
+
+        data = {inp.get("name"): inp.get("value", "") for inp in inputs if inp.get("name")}
+
+        # Wait for the countdown (usually 10s)
+        time.sleep(10)
+
+        headers = {"Referer": url}
+        res2 = client.post(action_url, data=data, headers=headers, timeout=15, allow_redirects=False)
+
+        if "Location" in res2.headers:
+            return res2.headers["Location"]
+        else:
+            return "Bypass failed: no redirect found."
+
+    except Exception as e:
+        return f"Bypass error: {str(e)}"
+
+def smart_bypass(url: str) -> str:
+    """
+    Detect which shortener is used and call its bypass function.
+    """
+    if "gplinks.in" in url:
+        return gplinks_bypass(url)
+    # You can add more shorteners here:
+    # elif "gtlinks.me" in url:
+    #     return gtlinks_bypass(url)
+    # elif "droplink.co" in url:
+    #     return droplink_bypass(url)
+    else:
+        return url  # return original if unsupported
+
+if __name__ == "__main__":
+    test_url = input("Enter gplinks.in URL: ").strip()
+    final_link = smart_bypass(test_url)
+    print("Bypassed URL:", final_link)
