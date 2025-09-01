@@ -165,3 +165,30 @@ def getlinks(url):
     res = safe_get(url)   # ✅ use safe_get instead of requests.get
     soup = BeautifulSoup(res.text, "html.parser")
     return soup
+
+import requests, ssl
+from requests.adapters import HTTPAdapter
+from urllib3.poolmanager import PoolManager
+
+# ✅ TLSAdapter to handle weak SSL sites
+class TLSAdapter(HTTPAdapter):
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = ssl.create_default_context()
+        ctx.set_ciphers("DEFAULT@SECLEVEL=1")
+        kwargs["ssl_context"] = ctx
+        return super().init_poolmanager(*args, **kwargs)
+
+# ✅ session with TLSAdapter
+session = requests.Session()
+session.mount("https://", TLSAdapter())
+
+# ✅ use safe_get instead of requests.get
+def safe_get(url):
+    return session.get(url, timeout=20)
+
+
+# --- Your bypass functions below ---
+def getlinks(url):
+    res = safe_get(url)   # use safe_get here
+    # parse response normally...
+    return res.text
