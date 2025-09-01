@@ -23,7 +23,7 @@ SHORTENERS = {
     "ouo.press", "boost.ink", "gplinks.in"
 }
 
-PREFERRED_DOMAINS = ("t.me", "telegram.me", "telegram.dog")
+PREFERRED_DOMAINS_DEFAULT = ("t.me", "telegram.me", "telegram.dog")
 
 PUBLIC_APIS = [
     "https://api.bypass.vip/?url=",
@@ -53,11 +53,11 @@ def is_shortener(host: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in SHORTENERS)
 
 
-def preferred_link(candidates: Iterable[str], prefer: Sequence[str]) -> Optional[str]:
+def preferred_link(candidates: Iterable[str], prefer_domains: Sequence[str]) -> Optional[str]:
     """Return the best URL based on preferred domains."""
     def score(u: str) -> int:
         host = urlparse(u).netloc.lower()
-        for i, dom in enumerate(prefer, start=1):
+        for i, dom in enumerate(prefer_domains, start=1):
             if host == dom or host.endswith("." + dom):
                 return 1000 - i
         return 0
@@ -81,7 +81,7 @@ async def fetch(session: ClientSession, url: str):
     return str(resp.url), html_text
 
 
-def extract_redirect(html_text: str, base_url: str, prefer: Sequence[str]) -> Optional[str]:
+def extract_redirect(html_text: str, base_url: str, prefer_domains: Sequence[str]) -> Optional[str]:
     """Extract redirect from meta, JS, or anchor tags."""
     m = META_REFRESH_RE.search(html_text)
     if m:
@@ -90,11 +90,11 @@ def extract_redirect(html_text: str, base_url: str, prefer: Sequence[str]) -> Op
     js_links = JS_REDIRECT_RE.findall(html_text)
     if js_links:
         hrefs = [urljoin(base_url, html.unescape(u)) for u in js_links]
-        return preferred_link(hrefs, prefer)
+        return preferred_link(hrefs, prefer_domains)
 
     hrefs = [urljoin(base_url, html.unescape(h)) for h in HREF_RE.findall(html_text)]
     if hrefs:
-        return preferred_link(hrefs, prefer)
+        return preferred_link(hrefs, prefer_domains)
     return None
 
 
@@ -117,7 +117,6 @@ async def gplinks_bypass(url: str) -> str:
     loop = asyncio.get_running_loop()
 
     headers = {"User-Agent": USER_AGENT, "Referer": url}
-
     res = await loop.run_in_executor(None, functools.partial(scraper.get, url, headers=headers, timeout=15))
 
     if "gplinks.in" not in res.url:
@@ -131,8 +130,7 @@ async def gplinks_bypass(url: str) -> str:
     action_url = form.get("action")
     data = {inp.get("name"): inp.get("value", "") for inp in form.find_all("input") if inp.get("name")}
 
-    await asyncio.sleep(7)  # Wait for countdown
-
+    await asyncio.sleep(7)
     res2 = await loop.run_in_executor(
         None,
         functools.partial(scraper.post, action_url, data=data, headers=headers, timeout=15, allow_redirects=False)
@@ -161,21 +159,21 @@ async def try_public_apis(url: str) -> Optional[str]:
 
 
 # ---------------- Main Logic ---------------- #
-async def smart_bypass(url: str, prefer=PREFERRED_DOMAINS, timeout: int = 25, use_api=True) -> str:
+async def smart_bypass(url: str, prefer_domains=PREFERRED_DOMAINS_DEFAULT, timeout: int = 25, use_api=True) -> str:
     norm = normalize_url(url)
     parsed = urlparse(norm)
+    host = parsed.netloc.lower()
 
     # Special handlers
-    host = parsed.netloc.lower()
     if "gplinks.in" in host:
         return await gplinks_bypass(norm)
     elif "ouo.io" in host or "ouo.press" in host:
         return await ouo_io_bypass(norm)
-    # Add more shorteners here if needed
 
     # Try aiohttp first
     connector = TCPConnector(ssl=False, limit=20)
-    async with ClientSession(timeout=ClientTimeout(total=timeout), connector=connector, headers={"User-Agent": USER_AGENT}) as session:
+    async with ClientSession(timeout=ClientTimeout(total=timeout), connector=connector,
+                             headers={"User-Agent": USER_AGENT}) as session:
         final_url, html_text = await fetch(session, norm)
 
         # Cloudflare bypass
@@ -186,7 +184,7 @@ async def smart_bypass(url: str, prefer=PREFERRED_DOMAINS, timeout: int = 25, us
             return final_url
 
         if html_text:
-            extracted = extract_redirect(html_text, final_url, prefer)
+            extracted = extract_redirect(html_text, final_url, prefer_domains)
             if extracted:
                 return extracted
 
@@ -198,7 +196,7 @@ async def smart_bypass(url: str, prefer=PREFERRED_DOMAINS, timeout: int = 25, us
         if not is_shortener(urlparse(final_url_2).netloc):
             return final_url_2
         if html_text_2:
-            extracted2 = extract_redirect(html_text_2, final_url_2, prefer)
+            extracted2 = extract_redirect(html_text_2, final_url_2, prefer_domains)
             if extracted2:
                 return extracted2
 
@@ -220,7 +218,7 @@ def bypass(url: str) -> str:
 # ---------------- Example Run ---------------- #
 if __name__ == "__main__":
     test_links = [
-        "https://gplinks.co/P3rGI",
+        "https://gplinks.co/Kh0epk",
         "https://ouo.io/abc123",
         "https://bit.ly/3xyz123",
         "https://droplink.co/example"
@@ -228,8 +226,8 @@ if __name__ == "__main__":
 
     async def main():
         for link in test_links:
-            print(f"Original: {link}")
-            result = await smart_bypass(link)
-            print(f"Bypassed: {result}\n")
+            print(f"🔗 Original: {link}")
+            result = await smart_bypass(link, prefer_domains=("t.me","telegram.me"))
+            print(f"✅ Bypassed: {result}\n")
 
     asyncio.run(main())
