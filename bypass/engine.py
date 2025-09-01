@@ -8,7 +8,6 @@ import cloudscraper
 from bs4 import BeautifulSoup
 import functools
 
-
 # User-Agent
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -27,6 +26,13 @@ SHORTENER_HINTS = {
 
 # Preferred targets
 DEFAULT_PREFERRED = ("t.me", "telegram.me", "telegram.dog")
+
+# Public APIs for fallback
+PUBLIC_APIS = [
+    "https://api.bypass.vip/?url=",
+    "https://bypass.bot.nu/bypass?url=",
+    "https://linkvertisebypass.org/api/?url="
+]
 
 # Regex patterns
 META_REFRESH_RE = re.compile(
@@ -98,7 +104,7 @@ def _extract_from_html(html_text: str, base_url: str, prefer_domains: Sequence[s
         return None
     return _preferred_first(hrefs, prefer_domains)
 
-# --- Shortener bypasses ---
+# --- Shortener-specific bypasses ---
 
 async def gplinks_bypass(url: str) -> str:
     """Async bypass for gplinks.in with headers and countdown."""
@@ -108,9 +114,7 @@ async def gplinks_bypass(url: str) -> str:
     loop = asyncio.get_running_loop()
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/124.0 Safari/537.36",
+        "User-Agent": UA,
         "Referer": url
     }
 
@@ -134,7 +138,7 @@ async def gplinks_bypass(url: str) -> str:
     inputs = form.find_all("input")
     data = {inp.get("name"): inp.get("value", "") for inp in inputs if inp.get("name")}
 
-    # Step 3: Wait countdown (most GPLinks need ~5–7s)
+    # Step 3: Wait countdown
     await asyncio.sleep(7)
 
     # Step 4: POST form
@@ -148,15 +152,24 @@ async def gplinks_bypass(url: str) -> str:
         return res2.headers["Location"]
     return "Bypass failed: no redirect found."
 
+# --- Public API fallback ---
+
+async def try_public_apis(url: str) -> Optional[str]:
+    for base in PUBLIC_APIS:
+        try:
+            async with ClientSession() as session:
+                async with session.get(f"{base}{url}") as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("success") and data.get("destination"):
+                            return data["destination"]
+        except:
+            continue
+    return None
+
 # --- Main smart bypass ---
 
-async def smart_bypass(url: str, prefer_domains=DEFAULT_PREFERRED, timeout: int = 25) -> str:
-    """
-    Smart bypass:
-      1) Handle known shorteners (gplinks)
-      2) Follow redirects and parse HTML for meta/JS/anchors
-      3) Return final URL
-    """
+async def smart_bypass(url: str, prefer_domains=DEFAULT_PREFERRED, timeout: int = 25, use_api: bool = True) -> str:
     norm = normalize_url(url)
     parsed = urlparse(norm)
 
@@ -164,22 +177,20 @@ async def smart_bypass(url: str, prefer_domains=DEFAULT_PREFERRED, timeout: int 
     if "gplinks.in" in parsed.netloc:
         return await gplinks_bypass(norm)
 
+    # Local bypass logic
     connector = TCPConnector(ssl=False, limit=20)
     t = ClientTimeout(total=timeout)
     async with ClientSession(timeout=t, connector=connector, headers={"User-Agent": UA}) as session:
         final_url, html_text = await _fetch(session, norm)
 
-        # If no longer a shortener, return
         if not _is_shortener(urlparse(final_url).netloc):
             return final_url
 
-        # Try extracting from HTML
         if html_text:
             extracted = _extract_from_html(html_text, final_url, prefer_domains)
             if extracted:
                 return extracted
 
-        # Try one more GET
         final_url_2, html_text_2 = await _fetch(session, final_url)
         if not _is_shortener(urlparse(final_url_2).netloc):
             return final_url_2
@@ -188,12 +199,25 @@ async def smart_bypass(url: str, prefer_domains=DEFAULT_PREFERRED, timeout: int 
             if extracted2:
                 return extracted2
 
-        # Last resort
-        return final_url
+    # API fallback
+    if use_api:
+        result = await try_public_apis(norm)
+        if result:
+            return result
+
+    return final_url
 
 # --- Example usage ---
 if __name__ == "__main__":
-    import asyncio
-    test_url = "https://gplinks.co/P3rGI"
-    final_link = asyncio.run(gplinks_bypass(test_url))
-    print("Bypassed URL:", final_link)
+    test_urls = [
+        "https://gplinks.co/P3rGI",  # GPLinks
+        "https://bit.ly/3xyz123"     # Bitly example
+    ]
+
+    async def main():
+        for url in test_urls:
+            print(f"Original: {url}")
+            final = await smart_bypass(url)
+            print(f"Bypassed: {final}\n")
+
+    asyncio.run(main())
