@@ -16,7 +16,7 @@ load_dotenv()
 API_ID = int(os.getenv("API_ID", "24196359"))
 API_HASH = os.getenv("API_HASH", "20a1b32381ed174799e8af8def3e176b")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8225310670:AAFLJ4DvtQ9ENOS8Z1Fqy2u24ZbRGdp8bbQ")
-KEEPALIVE = os.getenv("KEEPALIVE", "false").lower() == "true"
+KEEPALIVE = os.getenv("KEEPALIVE", "true").lower() == "true"
 PORT = int(os.getenv("PORT", "8080"))
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
