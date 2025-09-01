@@ -224,7 +224,6 @@ if __name__ == "__main__":
 
 
 scraper = cloudscraper.create_scraper()
-result = scraper.get(short_link).url
 print(result)
 
 def smart_bypass(short_link):
