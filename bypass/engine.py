@@ -7,6 +7,7 @@ from aiohttp import ClientSession, ClientTimeout, TCPConnector
 import cloudscraper
 from bs4 import BeautifulSoup
 import functools
+import requests, json
 
 # ---------------- Config ---------------- #
 USER_AGENT = (
@@ -20,7 +21,7 @@ SHORTENERS = {
     "cutt.ly", "rebrand.ly", "ouo.io", "shorte.st", "adf.ly",
     "linkvertise.com", "lnk.to", "gtlinks.me", "droplink.co",
     "tnlink.in", "tnshort.net", "rocklinks.net", "ez4short.com",
-    "ouo.press", "boost.ink", "gplinks.in"
+    "ouo.press", "boost.ink", "gplinks.in", "lksfy.com"
 }
 
 PREFERRED_DOMAINS = ("t.me", "telegram.me", "telegram.dog")
@@ -117,7 +118,6 @@ async def gplinks_bypass(url: str) -> str:
     loop = asyncio.get_running_loop()
 
     headers = {"User-Agent": USER_AGENT, "Referer": url}
-
     res = await loop.run_in_executor(None, functools.partial(scraper.get, url, headers=headers, timeout=15))
 
     if "gplinks.in" not in res.url:
@@ -164,14 +164,13 @@ async def try_public_apis(url: str) -> Optional[str]:
 async def smart_bypass(url: str, prefer=PREFERRED_DOMAINS, timeout: int = 25, use_api=True) -> str:
     norm = normalize_url(url)
     parsed = urlparse(norm)
+    host = parsed.netloc.lower()
 
     # Special handlers
-    host = parsed.netloc.lower()
     if "gplinks.in" in host:
         return await gplinks_bypass(norm)
     elif "ouo.io" in host or "ouo.press" in host:
         return await ouo_io_bypass(norm)
-    # Add more shorteners here if needed
 
     # Try aiohttp first
     connector = TCPConnector(ssl=False, limit=20)
@@ -217,9 +216,20 @@ def bypass(url: str) -> str:
     return asyncio.run(smart_bypass(url))
 
 
+# ---------------- Extra API (FreeSeptember) ---------------- #
+def uni(url):
+    res = requests.post("https://freeseptemberapi.vercel.app/bypass", json={"url": url})
+    try:
+        _j = res.json()
+        return _j.get("url", res.text)
+    except:
+        return res.text
+
+
 # ---------------- Example Run ---------------- #
 if __name__ == "__main__":
     test_links = [
+        "https://lksfy.com/0l1Zgq",
         "https://gplinks.co/P3rGI",
         "https://ouo.io/abc123",
         "https://bit.ly/3xyz123",
@@ -228,23 +238,9 @@ if __name__ == "__main__":
 
     async def main():
         for link in test_links:
-            print(f"Original: {link}")
+            print(f"🔗 Original: {link}")
             result = await smart_bypass(link)
-            print(f"Bypassed: {result}\n")
+            print(f"✅ Bypassed: {result}\n")
 
     asyncio.run(main())
-
-import requests, json
-
-def uni(url):
-    res = requests.post(
-        "https://freeseptemberapi.vercel.app/bypass",
-        json={"url": url}
-    )
-    _data = res.text
-    if "message" in _data:
-        return _data
-    _j = json.loads(_data)
-    return _j["url"]
-
-print(uni("https://earn4link.in"))
+    print("FreeSeptember API:", uni("https://earn4link.in"))
