@@ -42,12 +42,6 @@ app = Client(
 
 URL_RE = re.compile(r"(https?://[^\s<>\"'\)]+)", re.IGNORECASE)
 
-TARGET_PREFERRED = (
-    "t.me", "telegram.me", "telegram.dog",
-    "drive.google.com", "mega.nz", "mediafire.com",
-    "pixeldrain.com", "github.com"
-)
-
 HELP_TEXT = (
     "**🧭 How to use**\n"
     "• Send me **any short link** and I’ll try to bypass it.\n"
@@ -110,7 +104,7 @@ async def bypass_handler(_: Client, m: Message):
     async def task(u: str):
         async with sem:
             try:
-                bypassed = await smart_bypass(u, prefer_domains=TARGET_PREFERRED, timeout=25)
+                bypassed = await smart_bypass(u, timeout=25)  # ✅ FIXED: removed prefer_domains
                 results.append((u, bypassed))
             except Exception as e:
                 log.exception("Bypass failed for %s", u)
