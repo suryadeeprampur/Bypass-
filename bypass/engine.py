@@ -244,3 +244,18 @@ if __name__ == "__main__":
 
     asyncio.run(main())
     print("FreeSeptember API:", uni("https://earn4link.in"))
+
+
+
+def uni(url):
+    res = requests.post(
+        "https://freeseptemberapi.vercel.app/bypass",
+        json={"url": url}
+    )
+    _data = res.text
+    if "message" in _data:
+        return _data
+    _j = json.loads(_data)
+    return _j["url"]
+
+print(uni("https://lksfy.com/demo"))
