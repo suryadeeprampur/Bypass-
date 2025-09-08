@@ -7,7 +7,7 @@ from aiohttp import ClientSession, ClientTimeout, TCPConnector
 import cloudscraper
 from bs4 import BeautifulSoup
 import functools
-import requests, json
+import requests, json, random
 
 # ---------------- Config ---------------- #
 USER_AGENT = (
@@ -32,6 +32,18 @@ PUBLIC_APIS = [
     "https://linkvertisebypass.org/api/?url="
 ]
 
+# ---------------- Proxy List ---------------- #
+PROXIES = [
+    "http://ih937PBpb:3zqX2AHn6@212.192.198.35:63472",
+    "http://P48qRK4EL:rvqgnrxrJ@46.254.110.99:64978"
+]
+
+def get_proxy():
+    """Pick a random proxy from list."""
+    p = random.choice(PROXIES)
+    return {"http": p, "https": p}
+
+# ---------------- Regex ---------------- #
 META_REFRESH_RE = re.compile(
     r'<meta\s+http-equiv=["\']refresh["\'][^>]*?url=([^"\'>\s]+)', re.IGNORECASE
 )
@@ -146,6 +158,7 @@ async def ouo_io_bypass(url: str) -> str:
     return cloudscraper_bypass(url)[0]
 
 
+# ---------------- API Fallbacks ---------------- #
 async def try_public_apis(url: str) -> Optional[str]:
     for base in PUBLIC_APIS:
         try:
@@ -158,6 +171,31 @@ async def try_public_apis(url: str) -> Optional[str]:
         except:
             continue
     return None
+
+
+def freeseptember_bypass(url: str) -> str:
+    """Bypass using FreeSeptember API (valid till 30th Sept)."""
+    try:
+        res = requests.post(
+            "https://freeseptemberapi.vercel.app/bypass",
+            json={"url": url},
+            proxies=get_proxy(),
+            timeout=20
+        )
+        data = res.text
+
+        if "message" in data.lower():
+            return f"⚠️ API Message: {data}"
+
+        try:
+            j = res.json()
+        except json.JSONDecodeError:
+            j = json.loads(data)
+
+        return j.get("url", data)
+
+    except Exception as e:
+        return f"❌ FreeSeptember API error: {e}"
 
 
 # ---------------- Main Logic ---------------- #
@@ -207,6 +245,11 @@ async def smart_bypass(url: str, prefer=PREFERRED_DOMAINS, timeout: int = 25, us
         if api_result:
             return api_result
 
+        # Try FreeSeptember API
+        fs_result = freeseptember_bypass(norm)
+        if fs_result and "http" in fs_result:
+            return fs_result
+
     return final_url
 
 
@@ -214,16 +257,6 @@ async def smart_bypass(url: str, prefer=PREFERRED_DOMAINS, timeout: int = 25, us
 def bypass(url: str) -> str:
     """Run bypass synchronously."""
     return asyncio.run(smart_bypass(url))
-
-
-# ---------------- Extra API (FreeSeptember) ---------------- #
-def uni(url):
-    res = requests.post("https://freeseptemberapi.vercel.app/bypass", json={"url": url})
-    try:
-        _j = res.json()
-        return _j.get("url", res.text)
-    except:
-        return res.text
 
 
 # ---------------- Example Run ---------------- #
@@ -243,19 +276,6 @@ if __name__ == "__main__":
             print(f"✅ Bypassed: {result}\n")
 
     asyncio.run(main())
-    print("FreeSeptember API:", uni("https://earn4link.in"))
 
-
-
-def uni(url):
-    res = requests.post(
-        "https://freeseptemberapi.vercel.app/bypass",
-        json={"url": url}
-    )
-    _data = res.text
-    if "message" in _data:
-        return _data
-    _j = json.loads(_data)
-    return _j["url"]
-
-print(uni("https://lksfy.com/demo"))
+    # Test FreeSeptember API
+    print("FreeSeptember API:", freeseptember_bypass("https://earn4link.in"))
